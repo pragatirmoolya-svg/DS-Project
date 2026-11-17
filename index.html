@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CyberShield Log Analyzer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 5 7v8c0 7 5 12 11 14 6-2 11-7 11-14V7z' fill='%234cc2ff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0b1220; --panel: #111a2e; --line: #22304d; --text: #d7e2f5; --muted: #8ba0c4;
+    --accent: #4cc2ff; --high: #ff6b6b; --med: #ffb454; --low: #7bd88f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 40px; }
+  header h1 { margin: 0; font-size: 1.5rem; letter-spacing: .02em; }
+  header h1 span { color: var(--accent); }
+  header p { margin: 4px 0 16px; color: var(--muted); }
+  .badge { display: inline-block; margin-left: 8px; padding: 1px 8px; font-size: .72rem;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--muted); vertical-align: middle; }
+  .term { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  #out { margin: 0; padding: 14px 16px; height: 52vh; min-height: 320px; overflow: auto;
+    font: 13.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap;
+    word-break: break-word; }
+  .typed { color: var(--accent); }
+  .HIGH { color: var(--high); font-weight: 600; }
+  .MEDIUM { color: var(--med); }
+  .LOW { color: var(--low); }
+  form { display: flex; border-top: 1px solid var(--line); }
+  form label { padding: 11px 0 11px 16px; color: var(--accent);
+    font: 14px ui-monospace, Menlo, Consolas, monospace; }
+  #in { flex: 1; background: transparent; border: 0; outline: 0; color: var(--text); padding: 11px 10px;
+    font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 0; }
+  form button { border: 0; background: var(--accent); color: #04121f; font-weight: 600; padding: 0 20px; cursor: pointer; }
+  form button:disabled, #in:disabled { opacity: .45; cursor: not-allowed; }
+  .menu { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin: 14px 0; }
+  .menu button, .tools button, .tools label {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; text-align: left; cursor: pointer; font: inherit; }
+  .menu button:hover:not(:disabled), .tools button:hover, .tools label:hover { border-color: var(--accent); }
+  .menu button:disabled { opacity: .4; cursor: not-allowed; }
+  .menu b { color: var(--accent); margin-right: 6px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tools input[type=file] { display: none; }
+  #saved a { color: var(--accent); margin-right: 14px; }
+  #note { color: var(--muted); min-height: 1.4em; margin: 10px 0 0; }
+  footer { margin-top: 22px; color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); padding-top: 12px; }
+  @media (max-width: 520px) { #out { height: 46vh; font-size: 12.5px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Cyber<span>Shield</span> <span class="badge">C &rarr; WebAssembly</span></h1>
+    <p>Intelligent Cyber Threat Log Analyzer. This is the real C program (linked list, queue, hash table, BST, stack) running in your browser.</p>
+  </header>
+
+  <div class="term">
+    <pre id="out" aria-live="polite">Loading CyberShield...</pre>
+    <form id="form" autocomplete="off">
+      <label for="in">&gt;</label>
+      <input id="in" type="text" spellcheck="false" autocapitalize="off" aria-label="Terminal input" disabled>
+      <button id="send" type="submit" disabled>Enter</button>
+    </form>
+  </div>
+
+  <div class="menu" id="menu"></div>
+
+  <div class="tools">
+    <label for="up">Upload a CSV&hellip;</label>
+    <input id="up" type="file" accept=".csv,text/csv">
+    <button id="reset" type="button">Restart session</button>
+    <span id="saved"></span>
+  </div>
+  <p id="note"></p>
+
+  <footer>
+    The logs are simulated. Alerts are suspicious patterns that need investigation, not proof that any IP or user is malicious.
+    CSV format: <code>ip,username,timestamp,status</code> (status is Success or Failed). To load a file, choose <b>9</b>, then type its name
+    (press Enter for the built-in <code>sample_logs.csv</code>).
+  </footer>
+</div>
+
+<script type="module">
+import { runOnce } from "./runner.js";
+
+const out = document.getElementById("out");
+const input = document.getElementById("in");
+const send = document.getElementById("send");
+const menuBox = document.getElementById("menu");
+const note = document.getElementById("note");
+const savedBox = document.getElementById("saved");
+
+const MENU = [
+  ["1", "Add security log"], ["2", "Display all logs"], ["3", "Search logs by IP"],
+  ["4", "Analyze login attempts"], ["5", "Detect suspicious activity"], ["6", "Top active IPs"],
+  ["7", "Security report"], ["8", "Delete a log"], ["9", "Load logs from CSV"],
+  ["10", "Save logs to CSV"], ["11", "Recent events"], ["12", "Configure rules"], ["0", "Exit"],
+];
+
+let wasmModule;
+const files = new Map();        // files visible to the C program (sample + uploads)
+let inputs = [];                // every line typed so far (replayed each time)
+let prevLen = 0;                // how much program output is already on screen
+let ended = false;
+
+// ---- rendering -------------------------------------------------------
+function append(text, cls) {
+  if (!text) return;
+  if (cls) {
+    const s = document.createElement("span");
+    s.className = cls; s.textContent = text; out.appendChild(s);
+  } else {
+    for (const part of text.split(/(?<=\n)/)) {
+      const m = part.match(/^\[(HIGH|MEDIUM|LOW)\]/);
+      if (m) {
+        const s = document.createElement("span");
+        s.className = m[1]; s.textContent = part; out.appendChild(s);
+      } else {
+        out.appendChild(document.createTextNode(part));
+      }
+    }
+  }
+  out.scrollTop = out.scrollHeight;
+}
+
+function setReady(atMenu) {
+  const live = !ended;
+  input.disabled = !live; send.disabled = !live;
+  for (const b of menuBox.querySelectorAll("button")) b.disabled = !(live && atMenu);
+  if (live) input.focus();
+}
+
+function showSaved(generated) {
+  savedBox.textContent = "";
+  for (const [name, data] of generated) {
+    if (files.has(name)) continue;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([data], { type: "text/csv" }));
+    a.download = name; a.textContent = "Download " + name;
+    savedBox.appendChild(a);
+  }
+}
+
+// ---- running the C program --------------------------------------------
+function execute() {
+  const r = runOnce(wasmModule, inputs.length ? inputs.join("\n") + "\n" : "", files);
+  const fresh = r.output.slice(prevLen);
+  prevLen = r.output.length;
+  append(fresh);
+  showSaved(r.files);
+  if (/Goodbye\.\s*$/.test(r.output)) {
+    ended = true;
+    append("\n[session ended - press \"Restart session\" to run again]\n", "typed");
+  }
+  setReady(/Enter your choice: $/.test(r.output));
+}
+
+function submit(line) {
+  if (ended) return;
+  append(line + "\n", "typed");
+  inputs.push(line);
+  try { execute(); }
+  catch (e) { append("\n[error] " + e.message + "\n", "HIGH"); }
+}
+
+function start() {
+  inputs = []; prevLen = 0; ended = false;
+  out.textContent = "";
+  savedBox.textContent = "";
+  execute();
+}
+
+// ---- wiring ------------------------------------------------------------
+for (const [n, label] of MENU) {
+  const b = document.createElement("button");
+  b.type = "button"; b.disabled = true;
+  b.innerHTML = `<b>${n}</b>${label}`;
+  b.addEventListener("click", () => submit(n));
+  menuBox.appendChild(b);
+}
+
+document.getElementById("form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = input.value;
+  input.value = "";
+  submit(v.trim());
+});
+
+document.getElementById("reset").addEventListener("click", () => { note.textContent = ""; start(); });
+
+document.getElementById("up").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  if (f.size > 1024 * 1024) { note.textContent = "That file is over 1 MB. Please use a smaller CSV."; return; }
+  const name = f.name.replace(/[^\w.\-]/g, "_");
+  files.set(name, new Uint8Array(await f.arrayBuffer()));
+  note.textContent = `Uploaded ${name}. Choose 9, then type ${name} as the file name.`;
+});
+
+try {
+  const [wasmBytes, csv] = await Promise.all([
+    fetch("cybershield.wasm").then((r) => r.arrayBuffer()),
+    fetch("sample_logs.csv").then((r) => r.arrayBuffer()),
+  ]);
+  wasmModule = await WebAssembly.compile(wasmBytes);
+  files.set("sample_logs.csv", new Uint8Array(csv));
+  start();
+} catch (e) {
+  out.textContent = "Could not load the program: " + e.message;
+}
+</script>
+</body>
+</html>
